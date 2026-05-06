@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>교복 참여율 대시보드</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+  :root {
+    --bg: #f6f7fb;
+    --card: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #3b82f6;
+    --danger: #ef4444;
+    --success: #10b981;
+    --shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard",
+                 "Noto Sans KR", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  .container { max-width: 1280px; margin: 0 auto; }
+
+  /* ── 헤더 ───────────────────────────────────────── */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .date-badge {
+    background: var(--card);
+    padding: 14px 20px;
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+  .date-badge .label {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+  }
+  .date-badge .value {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .title {
+    font-size: 14px;
+    color: var(--muted);
+    text-align: right;
+  }
+  .title strong { display: block; font-size: 18px; color: var(--text); margin-bottom: 4px; }
+
+  /* ── 섹션 공통 ──────────────────────────────────── */
+  section {
+    background: var(--card);
+    border-radius: 14px;
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border: 1px solid var(--border);
+  }
+  h2 {
+    font-size: 16px;
+    margin: 0 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h2 .sub {
+    font-size: 12px;
+    color: var(--muted);
+    font-weight: 400;
+  }
+
+  /* ── 막대그래프 영역 ────────────────────────────── */
+  .chart-wrap { position: relative; height: 380px; }
+  .legend-row {
+    display: flex;
+    gap: 16px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  /* ── 통계 카드 그리드 ───────────────────────────── */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .stat-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: #fff;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  }
+  .stat-card .class-name {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stat-card .class-name .delta {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+  .delta.up { background: #dcfce7; color: #15803d; }
+  .delta.down { background: #fee2e2; color: #b91c1c; }
+  .delta.flat { background: #f3f4f6; color: #6b7280; }
+
+  .metric {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .metric .v { color: var(--text); font-weight: 600; }
+  .bar {
+    width: 100%;
+    height: 6px;
+    background: #f3f4f6;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+  }
+  .bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .bar.avg > span   { background: #94a3b8; }
+  .bar.today > span { background: var(--accent); }
+
+  /* ── 로딩 / 에러 ───────────────────────────────── */
+  .loading, .error {
+    text-align: center;
+    padding: 40px;
+    color: var(--muted);
+  }
+  .error { color: var(--danger); }
+
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    section { padding: 16px; }
+    .chart-wrap { height: 320px; }
+    .date-badge .value { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ① 헤더 -->
+  <header>
+    <div class="date-badge">
+      <div class="label">TODAY</div>
+      <div class="value" id="todayDate">—</div>
+    </div>
+    <div class="title">
+      <strong>교복 참여율 대시보드</strong>
+      <span id="dataInfo">데이터 불러오는 중…</span>
+    </div>
+  </header>
+
+  <!-- ② 반별 막대그래프 -->
+  <section>
+    <h2>반별 오늘 참여율 <span class="sub">학년-반 순 정렬</span></h2>
+    <div class="chart-wrap">
+      <canvas id="barChart"></canvas>
+    </div>
+    <div class="legend-row">
+      <span><span class="legend-dot" style="background:#ef4444"></span>상위 5개 반</span>
+      <span><span class="legend-dot" style="background:#3b82f6"></span>그 외</span>
+    </div>
+  </section>
+
+  <!-- ③ 반별 통계 카드 -->
+  <section>
+    <h2>반별 통계 <span class="sub">평균 참여율 · 오늘 참여율</span></h2>
+    <div id="cardsGrid" class="cards-grid"></div>
+  </section>
+
+  <div id="status"></div>
+</div>
+
+<script>
+/* ────────────────────────────────────────────────────────────
+   설정
+──────────────────────────────────────────────────────────── */
+// 배포한 Apps Script Web App URL을 여기 붙여넣기
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxqF4UNuh_d9vxkBjUO9Tr2Bc_XTJtOxrHvlnGPC99BEp6c3pakPUx1f1N2VeKJTjOV/exec';
+
+// SCRIPT_URL이 비어있을 때 사용할 샘플 데이터 (개발/미리보기용)
+const USE_SAMPLE_IF_EMPTY = true;
+
+/* ────────────────────────────────────────────────────────────
+   유틸
+──────────────────────────────────────────────────────────── */
+function formatKoreanDate(d) {
+  const days = ['일','월','화','수','목','금','토'];
+  return `${d.getFullYear()}년 ${d.getMonth()+1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+}
+function todayStr() {
+  const d = new Date();
+  const m = String(d.getMonth()+1).padStart(2,'0');
+  const day = String(d.getDate()).padStart(2,'0');
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+function classKey(g, c) { return `${g}-${c}`; }
+
+/* ────────────────────────────────────────────────────────────
+   샘플 데이터 (URL 미설정 시 fallback)
+   2026-05-06 실제 입력 데이터 — 3학년 × 8반
+──────────────────────────────────────────────────────────── */
+
+/* ────────────────────────────────────────────────────────────
+   데이터 로드
+──────────────────────────────────────────────────────────── */
+async function loadData() {
+  const isPlaceholder = !SCRIPT_URL || SCRIPT_URL.includes('여기에_APPS_SCRIPT');
+  if (isPlaceholder) {
+    if (USE_SAMPLE_IF_EMPTY) {
+      document.getElementById('dataInfo').textContent = '⚠ 샘플 데이터 (URL 미설정)';
+      return generateSample();
+    }
+    throw new Error('SCRIPT_URL 이 설정되지 않았습니다.');
+  }
+  const url = `${SCRIPT_URL}${SCRIPT_URL.includes('?') ? '&' : '?'}t=${Date.now()}`;
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  if (data && data.error) throw new Error(data.error);
+
+  // 두 가지 응답 포맷 모두 지원:
+  //   (a) [{...}, {...}]                       ← 배열만
+  //   (b) { rows: [...], generatedAt: '...' }  ← 객체로 감싼 형태
+  let rows;
+  if (Array.isArray(data)) {
+    rows = data;
+    document.getElementById('dataInfo').textContent =
+      `데이터 ${rows.length}건 로드 (${new Date().toLocaleTimeString('ko-KR')})`;
+  } else if (data && Array.isArray(data.rows)) {
+    rows = data.rows;
+    document.getElementById('dataInfo').textContent =
+      `최근 업데이트: ${data.generatedAt || '—'}`;
+  } else {
+    console.warn('알 수 없는 응답 포맷:', data);
+    rows = [];
+  }
+
+  // rate 필드가 없거나 숫자 타입이 문자열일 수 있어 안전하게 정규화
+  return rows.map(r => {
+    const present = Number(r.present) || 0;
+    const total = Number(r.total) || 0;
+    return {
+      grade: Number(r.grade),
+      classNum: Number(r.classNum),
+      date: String(r.date),
+      present,
+      total,
+      rate: r.rate != null && !isNaN(Number(r.rate))
+        ? Number(r.rate)
+        : (total > 0 ? +(present / total * 100).toFixed(1) : 0)
+    };
+  });
+}
+
+/* ────────────────────────────────────────────────────────────
+   집계
+──────────────────────────────────────────────────────────── */
+function aggregate(rows) {
+  // 반별 그룹핑
+  const groups = new Map();
+  rows.forEach(r => {
+    const key = classKey(r.grade, r.classNum);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+
+  // 가장 최근 날짜를 '오늘'로 사용 (오늘 데이터가 없으면 직전 날짜 fallback)
+  const allDates = [...new Set(rows.map(r => r.date))].sort();
+  const latestDate = allDates[allDates.length - 1] || todayStr();
+
+  const classes = [];
+  groups.forEach((records, key) => {
+    const [g, c] = key.split('-').map(Number);
+    const sorted = records.slice().sort((a,b) => a.date.localeCompare(b.date));
+    const todayRec = sorted.find(r => r.date === latestDate);
+    const avg = sorted.length
+      ? +(sorted.reduce((s,r) => s + r.rate, 0) / sorted.length).toFixed(1)
+      : 0;
+    classes.push({
+      grade: g,
+      classNum: c,
+      label: `${g}-${c}`,
+      fullName: `${g}학년 ${c}반`,
+      avgRate: avg,
+      todayRate: todayRec ? todayRec.rate : 0,
+      todayPresent: todayRec ? todayRec.present : 0,
+      todayTotal: todayRec ? todayRec.total : 0,
+      hasToday: !!todayRec
+    });
+  });
+
+  // 학년-반 순 정렬
+  classes.sort((a,b) => a.grade - b.grade || a.classNum - b.classNum);
+  return { classes, latestDate };
+}
+
+/* ────────────────────────────────────────────────────────────
+   섹션 ① 날짜
+──────────────────────────────────────────────────────────── */
+function renderDate() {
+  document.getElementById('todayDate').textContent = formatKoreanDate(new Date());
+}
+
+/* ────────────────────────────────────────────────────────────
+   섹션 ② 막대그래프
+──────────────────────────────────────────────────────────── */
+let chartInstance = null;
+function renderBarChart(classes) {
+  // 상위 5반 식별 (오늘 참여율 기준)
+  const top5Keys = new Set(
+    classes.slice()
+      .sort((a,b) => b.todayRate - a.todayRate)
+      .slice(0, 5)
+      .map(c => c.label)
+  );
+
+  const labels = classes.map(c => c.label);
+  const data = classes.map(c => c.todayRate);
+  const colors = classes.map(c =>
+    top5Keys.has(c.label) ? '#ef4444' : '#3b82f6'
+  );
+  const borderColors = classes.map(c =>
+    top5Keys.has(c.label) ? '#dc2626' : '#2563eb'
+  );
+
+  const ctx = document.getElementById('barChart').getContext('2d');
+  if (chartInstance) chartInstance.destroy();
+
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: '참여율(%)',
+        data,
+        backgroundColor: colors,
+        borderColor: borderColors,
+        borderWidth: 1,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => `${items[0].label} 반`,
+            label: (item) => {
+              const c = classes[item.dataIndex];
+              return [
+                `참여율: ${item.parsed.y.toFixed(1)}%`,
+                `${c.todayPresent} / ${c.todayTotal}명`,
+                top5Keys.has(c.label) ? '🔥 상위 5위 이내' : ''
+              ].filter(Boolean);
+            }
+          }
+        },
+        datalabels: {
+          anchor: 'end',
+          align: 'top',
+          formatter: (v) => v ? `${v.toFixed(0)}%` : '',
+          font: { size: 10, weight: '600' },
+          color: '#374151'
+        }
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          max: 110,
+          ticks: {
+            stepSize: 20,
+            callback: (v) => v <= 100 ? v + '%' : ''
+          },
+          grid: { color: '#f1f5f9' }
+        },
+        x: {
+          ticks: { font: { size: 11 } },
+          grid: { display: false }
+        }
+      }
+    },
+    plugins: [ChartDataLabels]
+  });
+}
+
+/* ────────────────────────────────────────────────────────────
+   섹션 ③ 통계 카드
+──────────────────────────────────────────────────────────── */
+function renderStatCards(classes) {
+  const grid = document.getElementById('cardsGrid');
+  grid.innerHTML = '';
+
+  classes.forEach(c => {
+    const diff = +(c.todayRate - c.avgRate).toFixed(1);
+    let deltaClass = 'flat', deltaText = '±0.0%p';
+    if (diff > 0.1)      { deltaClass = 'up';   deltaText = `▲ ${diff.toFixed(1)}%p`; }
+    else if (diff < -0.1){ deltaClass = 'down'; deltaText = `▼ ${Math.abs(diff).toFixed(1)}%p`; }
+
+    const card = document.createElement('div');
+    card.className = 'stat-card';
+    card.innerHTML = `
+      <div class="class-name">
+        <span>${c.fullName}</span>
+        <span class="delta ${deltaClass}">${deltaText}</span>
+      </div>
+      <div class="metric">
+        <span>평균 참여율</span>
+        <span class="v">${c.avgRate.toFixed(1)}%</span>
+      </div>
+      <div class="bar avg"><span style="width:${Math.min(100, c.avgRate)}%"></span></div>
+      <div class="metric">
+        <span>오늘 참여율</span>
+        <span class="v">${c.hasToday ? c.todayRate.toFixed(1) + '%' : '—'}</span>
+      </div>
+      <div class="bar today"><span style="width:${Math.min(100, c.todayRate)}%"></span></div>
+    `;
+    grid.appendChild(card);
+  });
+}
+
+/* ────────────────────────────────────────────────────────────
+   부트
+──────────────────────────────────────────────────────────── */
+async function init() {
+  renderDate();
+  try {
+    const rows = await loadData();
+    if (!rows.length) {
+      document.getElementById('status').innerHTML =
+        '<div class="loading">데이터가 비어 있습니다.</div>';
+      return;
+    }
+    const { classes } = aggregate(rows);
+    renderBarChart(classes);
+    renderStatCards(classes);
+  } catch (err) {
+    console.error(err);
+    document.getElementById('status').innerHTML =
+      `<div class="error">로드 실패: ${err.message}</div>`;
+  }
+}
+
+init();
+</script>
+</body>
+</html>
